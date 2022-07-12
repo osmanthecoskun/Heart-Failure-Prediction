@@ -1,0 +1,920 @@
+---
+title: "Heart Failure Prediction"
+author: "Osman Coşkun"
+date: "12 04 2022"
+output: html_document
+---
+### 1. Veri Yükleme ve Dönüşüm İşlemleri
+
+```{r}
+library(readxl)
+data <- read_excel("C:/Users/osman/OneDrive/Masaüstü/heart_failure_clinical_records.xlsx")
+data <- as.data.frame(data)
+head(data)
+```
+#### readx1 paketindeki, read_excel fonksiyonunu kullanarak veri setini yükledik ve yapmış olduğumuz bu işlemi data adlı bir değişkene atadık. as.data.frame fonksiyonunu kullanarak data isimli veri setimizi data frame formatına çevirdik. head fonksiyonunu kullanarak veri setinde yer alan değişkenlerin ilk 6 gözlemini elde ettik ve değişkenleri inceledik. Değişkenlerin 7’si nicel, 6’sı kategorik verilerden oluşmaktadır.
+
+```{r}
+data$anaemia <- factor(data$anaemia,levels = c("0","1"),labels = c("No","Yes"))
+data$diabetes <- factor(data$diabetes,levels = c("0","1"),labels = c("No","Yes"))
+data$high_blood_pressure <- factor(data$high_blood_pressure,levels = c("0","1"),labels = c("No","Yes"))
+data$sex <- factor(data$sex,levels = c("0","1"),labels = c("Female","Male"))
+data$smoking <- factor(data$smoking,levels = c("0","1"),labels = c("No","Yes"))
+data$DEATH_EVENT <- factor(data$DEATH_EVENT,levels = c("0","1"),labels = c("No","Yes"))
+
+```
+
+#### Veri setindeki kategorik değişkenleri faktör olarak tanımladık. Bu işlemi factor fonksiyonunu kullanarak gerçekleştirdik.
+
+```{r}
+summary(data)
+```
+
+#### Veri dönüştürme işlemlerini gerçekleştirdikten sonra, summary fonksiyonunu kullanarak değişkenlerle ilgili özet bilgileri elde ettik.
+
+### 2. Eksik Gözlemler
+```{r}
+rowSums(is.na(data))
+```
+
+```{r}
+colSums(is.na(data))
+```
+
+#### is.na, rowSums ve colSums fonksiyonlarını kullanarak veri setimizde satır ve sütün  bazında eksik veri içerip içermediğini inceledik. Veri setimiz satır ve sütün bazında eksik veri içermemektedir. Bu nedenle veri setimiz için rastgele bir şekilde eksik veri oluşturalım.
+
+```{r}
+data_miss <- data
+```
+
+#### Eksik veri oluşturmaya başlamadan önce orijinal veri setimizi data_miss isimli bir değişkene atayarak bir kopyasını elde ettik. Eksik veri oluşturma işlemlerimizi data_miss veri seti üzerinden gerçekleştireceğiz.
+
+```{r}
+data_miss[sample(1:nrow(data_miss),floor(nrow(data_miss)*0.05)),"age"]<- NA
+data_miss[sample(1:nrow(data_miss),floor(nrow(data_miss)*0.07)),"diabetes"]<- NA
+data_miss[sample(1:nrow(data_miss),floor(nrow(data_miss)*0.05)),"ejection_fraction"]<- NA
+data_miss[sample(1:nrow(data_miss),floor(nrow(data_miss)*0.07)),"high_blood_pressure"]<- NA
+data_miss[sample(1:nrow(data_miss),floor(nrow(data_miss)*0.09)),"smoking"]<- NA
+```
+
+#### age, diabetes, ejection_fraction, high_blood_pressure ve smoking değişkenleri için eksik veri oluşturduk. Bu işlemden sonra mice paketindeki md.pattern fonksiyonunu kullanarak eksik verilerimizin yapısını inceleyelim.
+
+```{r}
+library(mice)
+md.pattern(data_miss[,c("age","diabetes","ejection_fraction","high_blood_pressure","smoking","DEATH_EVENT")],rotate.names = TRUE)
+```
+
+#### md.pattern fonksiyonu ile oluşturduğumuz grafikte  mavi hücreler dolu gözlemleri, pembe hücreler ise eksik gözlemleri temsil etmektedir. Grafiğin sol tarafındaki sayılar değişkenlere ait olan hücrelerdeki eksik ve dolu gözlem sayısını, sağ tarafındaki sayılar ise eksik gözleme sahip olan değişken sayısını ifade etmektedir. Grafiğin altında yer alan sayılar ise değişkenlere ait toplam eksik gözlem sayısını belirtmektedir. data_miss veri setimize ait grafiği incelediğimizde DEATH_EVENT değişkeninde eksik gözlem bulunmadığı, age ve ejection_fraction değişkenlerinde 14, diabetes ve high_blood_pressure değişkenlerinde 20, smoking değişkeninde ise 26 eksik gözlem olduğu gözlemlenmiştir. Tüm bu gözlemler sonucunda data_miss veri setimizde 94 eksik gözlem olduğu belirlenmiştir.
+
+```{r}
+library(DMwR2)
+anyNA(data_miss) 
+data_knn<-knnImputation(data_miss, k=7, meth="median")
+anyNA(data_knn)
+```
+
+#### K-Nearest Neighbor tahmine dayalı yönteminden yararlanmak için DMwR2 paketini çağırdık. anyNA fonksiyonu ile data_miss verisetinin eksik gözlem içerip içermediğini kontrol ettik ve data_miss veri setinin eksik gözlem içerdiği bilgisine ulaştık. knnImputation fonksiyonunu kullanarak data_miss verisetindeki eksik gözlemleri en yakın 7 komşusunun ortanca değerini alacak şekilde doldurduk ve bu işlemi data_knn adlı değişkene atadık. anyNA fonksiyonu ile data_knn verisetinin eksik gözlem içerip içermediğini kontrol ettik ve data_knn veri setinin eksik gözlem içermediği bilgisine ulaştık.
+
+```{r}
+a<-which(is.na(data_miss$age))
+data_knn$age[a]
+data$age[a]
+
+b<-which(is.na(data_miss$diabetes))
+data_knn$diabetes[b]
+data$diabetes[b]
+
+c<-which(is.na(data_miss$ejection_fraction))
+data_knn$ejection_fraction[c]
+data$ejection_fraction[c]
+
+d<-which(is.na(data_miss$high_blood_pressure))
+data_knn$high_blood_pressure[d]
+data$high_blood_pressure[d]
+
+e<-which(is.na(data_miss$smoking))
+data_knn$smoking[e]
+data$smoking[e]
+```
+
+#### which ve is.na fonksiyonlarını kullanarak data_miss veri setimizde eksik gözlem içeren değişkenlerimizin sıra numaralarına ulaştık ve bunları "a,b,c,d,e" isimli değişkenlere atadık. Sonrasında data_knn veri setinde doldurmuş olduğumuz eksik gözlemlerin ve data verisetindeki orijinal gözlemlerin sıra numarasına ulaşmak için, "a,b,c,d,e" değişkenlerinden yararlanarak data_knn verisetinde doldurmuş olduğumuz gözlemlere ve data verisetindeki orijinal verilere ulaştık. data_knn ve data verisetlerinden elde ettiğimiz gözlemleri karşılaştırarak doldurma işlemimizin doğruluğunu test ettik.
+
+### 3. Train & Test Veri Kümeleri
+
+```{r}
+library(caret)
+set.seed(74367432)
+train_id<-createDataPartition(data$DEATH_EVENT, p=0.80, list=FALSE, times=1)
+```
+
+#### caret paketindeki createDataPartition fonnksiyonunu kullanarak, data veri setimizin train ve test veri kümelerine hangi yüzdeliklerle ayrılacağını belirlemek için train_id adlı değişkeni oluşturduk.
+
+```{r}
+train<-data[train_id,]
+test<-data[-train_id,]
+```
+
+#### train_id değişkeninden yararlanarak train ve test veri kümelerimizi oluşturduk.
+
+```{r}
+library("openxlsx")
+write.xlsx(train, 'train.xlsx')
+write.xlsx(test, 'test.xlsx')
+```
+
+#### openxlsx paketindeki write.xlsx fonksiyonundan yararlanarak, train ve test veri kümelerimizi yazdırdık.
+
+```{r}
+library(dplyr)
+glimpse(train)
+```
+
+#### dplyr paketindeki glimpse fonksiyonunu kullanarak train veri kümemizin yapısını inceledik.
+
+
+```{r}
+train$ejf_kat<-ifelse(train$ejection_fraction < 35, "Düsük", ifelse(train$ejection_fraction >= 35 & train$ejection_fraction <= 55,"Normal","Yüksek"))
+
+train$srs_kat<-ifelse(train$serum_sodium < 135, "Düsük", ifelse(train$serum_sodium >= 135 & train$serum_sodium <=  145,"Normal","Yüksek"))
+```
+
+
+#### train veri kümesindeki ejection_fraction ve serum_sodium değişkenlerinden yeni gruplanmış  kategorik değişkenler türettik.
+
+```{r}
+train$ejf_kat<-factor(train$ejf_kat, levels=c("Düsük","Normal","Yüksek"))
+train$srs_kat<-factor(train$srs_kat, levels=c("Düsük","Normal","Yüksek"))
+```
+
+#### Türetilen kategorik değişkenleri factor olarak tanımladık.
+
+```{r}
+glimpse(train)
+```
+
+#### Yeni değişken türetme ve dönüşüm işlemlerinden sonra glimpse fonksiyonu ile train veri kümesinin yapısını yeniden inceledik.
+
+### 4. Verilerin Açıklayıcı/Keşfedici Çözümlemesi
+
+```{r}
+library(funModeling)
+profiling_num(train)
+plot_num(train)
+```
+
+#### funmodeling paketindeki profiling_num ve plot_num fonksiyonlarını kullanarak train veri kümemizdeki nicel değişkenlere ait özet istatistikleri ve grafikleri elde ettik. Özet istatistikleri ve grafikleri incelediğimizde creatinine_phosphokinase, serum_creatinine ve  platelets değişkenlerinin sağa çarpık olduğunu, serum_sodium değişkeninin sola çarpık olduğunu, age ve time değişkenlerinin ise homojen bir şekilde dağıldığını söyleyebiliriz.
+
+```{r}
+freq(train)
+```
+
+#### funmodeling paketi içerisinde yer alan freq fonksiyonunu kullanarak kategorik değişkenlerimizin frekans ve frekans oranlarını içeren grafikleri elde ettik.
+
+```{r}
+library(psych)
+library(dplyr)
+library(ggplot2)
+
+df<-select(train,time,srs_kat)
+describeBy(df, df$srs_kat)
+
+ggplot(train, aes(x=srs_kat,y=time, fill=srs_kat))+
+  geom_boxplot()+
+  stat_summary(fun = median, geom="line", group= 1, color= "black", size = 1.25)    
+```
+
+#### Hasta takip süresinin (time değişkeni),kandaki serum sodyum seviyesi (srs_kat değişkeni) bazında özet istatistiklerini ve boxplot grafiğini elde ettik. Özet istatistikleri  incelediğimizde kategorilerde düsük'ten yüksek'e doğru geçiş sağlandığında  ortanca oranı arttıkça standart sapmanın da artış gösterdiği görülmekte, buna göre hastanın takip süresi ile kandaki serum sodyum seviyesi arasında doğrusal bir ilişkinin var olduğundan söz edebiliriz. Boxplot grafiklerini incelediğimizde kategorilerde düsük'ten yüksek'e doğru geçiş sağlandığında kutu genişliklerinin gittikçe küçüldüğü görülmekte, buna göre değişen varyanslılığın  varlığından söz edebiliriz.
+
+```{r}
+quantile(train$ejection_fraction)
+ejection_fraction_min <- as.vector(quantile(train$ejection_fraction,0.00))
+ejection_fraction_q1 <- as.vector(quantile(train$ejection_fraction,0.25))
+ejection_fraction_median <- as.vector(quantile(train$ejection_fraction,0.50))
+ejection_fraction_q3 <- as.vector(quantile(train$ejection_fraction,0.75))
+ejection_fraction_max <- as.vector(quantile(train$ejection_fraction,1.00))
+```
+
+```{r}
+quantile(train$serum_sodium)
+serum_sodium_min <- as.vector(quantile(train$serum_sodium,0.00))
+serum_sodium_q1 <- as.vector(quantile(train$serum_sodium,0.25))
+serum_sodium_median <- as.vector(quantile(train$serum_sodium,0.50))
+serum_sodium_q3 <- as.vector(quantile(train$serum_sodium,0.75))
+serum_sodium_max <- as.vector(quantile(train$serum_sodium,1.00))
+```
+
+#### Train veri kümemimize ait ejection_fraction ve serum_sodium  nicel değişkenlerinin 5 nokta ölçülerini (mimimum, Q1, medyan, Q3, maksimum) hesapladık ve bu değerleri değişkenlere atadık. Bu değişkenlerden yararlanarak, ejection_fraction ve serum_sodium değişkenlerimiz için  DAG ve Genişlik ölçülerini hesaplayacağız.
+
+```{r}
+ejection_fraction_DAG <- ejection_fraction_q3 - ejection_fraction_q1
+ejection_fraction_DAG
+
+ejection_fraction_Genislik <- ejection_fraction_max - ejection_fraction_min
+ejection_fraction_Genislik
+```
+
+```{r}
+serum_sodium_DAG <- serum_sodium_q3 - serum_sodium_q1
+serum_sodium_DAG
+
+serum_sodium_Genislik <- serum_sodium_max - serum_sodium_min
+serum_sodium_Genislik
+```
+
+#### ejection_fraction ve serum_sodium değişkenlerimize ait DAG ve Genişlik ölçülerini elde ettik ve bunları değişkenlere atadık. (ejection_fraction_DAG - ejection_fraction_Genislik - serum_sodium_DAG - serum_sodium_Genislik)
+
+```{r}
+stdev<-sd(train$age)
+mean<-mean(train$age)
+Degisim_kats_age<-(stdev/mean)*100
+Degisim_kats_age
+```
+
+#### Train veri kümemizdeki age değişkeni için değişim katsayısı hesapladık. Age değişkeni için yaklaşık %20'lik bir değişim katsayısı elde ettik. Bu sonuca göre age değişkeninin yaklaşık simetrik olduğunu söyleyebiliriz.
+
+```{r}
+sd_dk <- function(x) {c(std<-sd(x), dk<-(sd(x)/mean(x))*100)}
+tapply(train$time, train$sex,sd_dk)
+```
+
+#### sex değişkenine göre time değişkeninin standart sapmasını ve değişim katsayısını hesapladık. Elde ettiğimiz değişim katsayısı değerlerini incelediğimizde, kadınların time değişkenindeki yayılımının, erkeklere göre daha fazla olduğunu söyleyebiliriz.
+
+```{r}
+sort <- train[order(train$age),]
+medianf<-median(sort$age)
+sort$fmed<-abs(sort$age-medianf)
+sort2 <- sort[order(sort$fmed),]
+mad<-median(sort2$fmed)
+mad
+```
+
+#### Train veri kümemizdeki  age değişkeni için ortalama/ortanca mutlak sapma (mad) değerini hesapladık. Elde ettiğimiz mad değeri küçük olduğu için age değişkeni içerisindeki değerlerin ortalama çevresinde birbirine yakın kümelendiklerini söyleyebiliriz.
+
+```{r}
+sol_kuyruk <- function(x) {
+  c(quantile(x,probs=1/2) , 
+    quantile(x,probs=1/4),
+    quantile(x,probs=1/8 ),
+    quantile(x,probs=1/16),
+    quantile(x,probs=1/32),
+    quantile(x,probs=1/64)
+  )
+}
+```
+
+```{r}
+sag_kuyruk <- function(x) {
+  c(quantile(x,probs=1/2) , 
+    quantile(x,probs=3/4),
+    quantile(x,probs=7/8),
+    quantile(x,probs=15/16),
+    quantile(x,probs=31/32),
+    quantile(x,probs=63/64)
+  )
+}
+```
+
+#### sol kuyruk ve sağ kuyruk değişkenleri oluşturuldu.
+
+```{r}
+y<-tapply(train$time, train$sex, sol_kuyruk)
+mrg_cins<-as.data.frame(cbind(y[[1]],y[[2]]))
+colnames(mrg_cins)<-c("Female","Male")
+mrg_cins$Fark<-abs(mrg_cins$Female-mrg_cins$Male)
+mrg_cins
+```
+
+#### Cinsiyete göre sol kuyruk incelemesi gerçekleştirildi.
+
+```{r}
+x_a<-sol_kuyruk(train$ejection_fraction)
+x_u<-sag_kuyruk(train$ejection_fraction)
+x_mrg<-as.data.frame(cbind(x_a,x_u))
+rownames(x_mrg)<-c("1/2","1/4","1/8","1/16","1/32","1/64")
+colnames(x_mrg)<-c("Alt_Kuyruk","Ust_Kuyruk")
+x_mrg$orta_nokta<-(x_mrg$Alt_Kuyruk+x_mrg$Ust_Kuyruk)/2
+x_mrg
+hist(train$ejection_fraction)
+```
+
+```{r}
+x_a<-sol_kuyruk(train$serum_sodium)
+x_u<-sag_kuyruk(train$serum_sodium)
+x_mrg<-as.data.frame(cbind(x_a,x_u))
+rownames(x_mrg)<-c("1/2","1/4","1/8","1/16","1/32","1/64")
+colnames(x_mrg)<-c("Alt_Kuyruk","Ust_Kuyruk")
+x_mrg$orta_nokta<-(x_mrg$Alt_Kuyruk+x_mrg$Ust_Kuyruk)/2
+x_mrg
+hist(train$serum_sodium)
+```
+
+#### Train veri kümemizdeki ejection_fraction ve serum_sodium değişkenleri için kuyruk uzunlukları ve histogram grafikleri elde edilmiştir. Elde edilen sonuçlar incelendiğinde ejection_fraction değişkeninin simetrik'e yakın, serum_sodium değişkeninin ise sola çarpık dağıldığını söyleyebiliriz.
+
+```{r}
+p<-0.1
+mean(train$serum_sodium, trim = p)
+
+n<-nrow(train$serum_sodium)
+ks<- n-(as.integer(2*p*n)) 
+ks
+
+geometric.mean(train$serum_sodium)
+```
+
+#### Train veri kümemizdeki serum_sodium değişkenine ait kesilmiş ortalama, kalan gözlem sayısı ve geometrik ortalama hesaplandı.
+
+```{r}
+table(train$sex)
+
+freq <- as.data.frame(table(train$sex))
+names(freq)[1] <- 'sex'
+freq
+
+gini <- function(a,b) {
+  a1 <- (a/(a+b))**2
+  b1 <- (b/(a+b))**2
+  x<-1-(a1 + b1)
+  return(x)
+}
+gn<-gini(freq[1,2],freq[2,2])
+k<-2
+gn/((k-1)/k)
+```
+
+```{r}
+table(train$smoking)
+
+freq <- as.data.frame(table(train$smoking))
+names(freq)[1] <- 'smoking'
+freq
+
+gini <- function(a,b) {
+  a1 <- (a/(a+b))**2
+  b1 <- (b/(a+b))**2
+  x<-1-(a1 + b1)
+  return(x)
+}
+gn<-gini(freq[1,2],freq[2,2])
+k<-2
+gn/((k-1)/k)
+```
+
+
+```{r}
+table(train$DEATH_EVENT)
+
+freq <- as.data.frame(table(train$DEATH_EVENT))
+names(freq)[1] <- 'death_event'
+freq
+
+gini <- function(a,b) {
+  a1 <- (a/(a+b))**2
+  b1 <- (b/(a+b))**2
+  x<-1-(a1 + b1)
+  return(x)
+}
+gn<-gini(freq[1,2],freq[2,2])
+k<-2
+gn/((k-1)/k)
+```
+
+#### Train veri kümemizdeki sex, smoking ve DEATH_EVENT değişkenleri için gini indeksleri hesaplandı. sex, smoking ve DEATH_EVENT değişkenlerine ait gini indeksleri 1'e yakın değer aldılar. Bu sonuçları göz önünde bulundurduğumuzda sex, smoking ve DEATH_EVENT değişkenlerinin hetorejen bir şekilde dağıldıklarını söyleyebiliriz.
+
+```{r}
+train$hastalik <- ifelse(train$high_blood_pressure == "Yes", "Hasta","HDeğil")
+train$hastalik <- as.factor(train$hastalik)
+```
+
+#### Train veri kümemizdeki high_blood_pressure değişkeninden yararlanarak, hastalik isimli yeni bir değişken oluşturduk. hastalik değişkenini factor formatına çevirdik.
+
+```{r}
+glimpse(train)
+```
+
+#### Değişken oluşturma ve dönüşüm işlemlerinden sonra train veri kümesinin yapısını inceledik.
+
+```{r}
+dt<-table(train$hastalik,train$DEATH_EVENT)
+dt
+```
+
+#### Train veri kümemizdeki hastalik ve DEATH_EVENT değişkenlerini kullanarak, hipertansiyon hastalığına sahip olan ve olmayan kişilere ait ölüm sayılarını içeren dt isimli tabloyu oluşturduk.
+
+```{r}
+round(100*prop.table(dt,2), 2)
+```
+
+#### hipertansiyon hastalığına sahip olan ve olmayan kişilere ait ölüm sayılarını içeren dt isimli tabloyu kullanarak bu sayıların yüzdesel olarak ifade edildiği tabloyu oluşturduk.
+
+```{r}
+library(DescTools)      
+Assocs(dt)[1:3,1]
+```
+
+#### DescTools paketindeki, Assocs fonksiyonundan yararlanarak dt isimli tablomuza ait Phi Katsayısını, Contingency Katsayısını ve Cramer V Katsayısın hesapladık. Cramer V Katsayısı 0.07 olarak hesaplanmıştır. Cramer V Katsayısı 0 yakın bir değer aldığı için hastalik ve DEATH_EVENT değişkenleri arasında zayıf bir birliktelik olduğunu söyleyebiliriz.
+
+```{r}
+library("gplots")
+balloonplot(t(dt), main ="Hastalık ve Ölüm Durumu ", xlab ="", ylab="",
+            label = TRUE ,show.margins = TRUE)
+```
+
+#### gplots paketindeki, balloonplot fonksiyonu ile, dt tablosunu kaynak alarak hipertansiyon rahatsızlığı ve ölüm durumu ile ilgili bir çapraz tablo oluşturduk. Çapraz tabloyu incelediğimizde hipertansiyon rahatsızlığına sahip olmayanlarda ölü sayısının, hipertansiyon rahatsızlığı olanlara göre daha fazla olduğu görülmektedir. Buna göre kabaca hipertansiyon rahatsızlığının ölüme sebep olma olasılığı düşüktür diyebiliriz.
+
+```{r}
+OR <- OddsRatio(dt, conf.level=0.95)
+OR
+```
+
+#### OddsRatio fonksiyonunu kullanarak dt tablomuza ait odds oranını hesapladık. Odds oranını 0.71 olarak bulduk. Buna göre hipertansiyon rahatsızlığına sahip olan hastaların, hipertansiyon rahatsızlığına sahip olmayan hastalara göre ölme olasılığı yaklaşık 0.7 kat daha fazladır diyebiliriz. 
+
+```{r}
+dt2<-xtabs(~ hastalik+sex+smoking, data=train)
+dt22<-as.data.frame(ftable(dt2))
+
+library(ggpubr)
+
+ggballoonplot(
+  dt22, x = "smoking", y = "sex",
+  size = "Freq", fill = "Freq",
+  facet.by = "hastalik",
+  ggtheme = theme_bw())
+
+```
+
+#### Yukarıdaki çapraz tablo ile hipertansiyon rahatsızlığının cinsiyete ve sigara kullanımına göre nasıl bir değişkenlik gösterdiğini elde ettik. Elde edilen sonuçları incelediğimizde erkeklerde sigara kullanımının hipertansiyon rahatsızlığına sahip olup olmamasında pek bir farklılık yaratmadığını, kadınlarda ise sigara kullanmayanların kullananlara göre hipertansiyon rahatsızlığına yakalanmalarının daha fazla olduğunu söyleyebiliriz.
+
+```{r}
+dt_c<-table(train$srs_kat,train$hastalik)
+dtc_exp <- chisq.test(dt_c)$expected
+rowcs <- function(i, obs, exp) {
+  sum(((obs[i,] - exp[i,])^2)/exp[i,])
+}
+
+chi_dtc<-as.matrix(lapply(seq_len(nrow(dt_c)), rowcs, obs = dt_c, exp = dtc_exp))
+rownames(chi_dtc)<-rownames(dt_c)
+chi_dtc
+```
+
+#### kandaki serum sodyum oranının, hipertansiyon rahatsızlığını nasıl etkilediğine ilişkin satır ki-karelerini elde ettik. kandaki düsük ve normal serum sodyum oranları için satır ki-karelerini 0.01, yüksek için ise 0.16 olarak bulduk. Bu sonuçlara göre  kandaki yüksek serum sodyum seviyesinin hipertansiyon rahatsızlığını etkilediğini ve birlikteliği bozduğunu söyleyebiliriz.
+
+
+```{r}
+library(inspectdf)
+library(dplyr)
+
+train %>% inspect_types()
+```
+
+#### Yukarıda yapmış olduğumuz işlemlerden sonra train veri kümemizin yapısını yeniden incelemeye aldık. Yaptığımız incelemelere göre veri kümemizin 9 factor ve 7 numeric değişkenden oluştuğunu ve bunların veri setinin yüzde kaçını kapsadığı sonuçlarına ulaştık.
+
+```{r}
+tra_cat<-train %>% inspect_cat()
+tra_cat %>% show_plot()
+```
+
+#### Train veri kümemizdeki kategorik değişkenlerin düzeyleri bazında dağılımını veren grafiği oluşturduk ve incelemelerimizi gerçekleştirdik.
+
+```{r}
+library(ggplot2)
+library(plotly)
+library(ggpubr)
+```
+
+#### ggplot2, plotly ve ggpubr paketlerini çağırdık.
+
+```{r}
+cross<-as.data.frame(prop.table(table(train$smoking))) 
+colnames(cross)[1] <- "smoking"
+plot_ly(cross, labels = ~smoking, values = ~Freq, type = 'pie')%>% layout(title ='Sigara Kullanımına Ait  Dağılım')
+```
+
+#### Plotly paketindeki plot_ly fonksiyonundan yararlanarak sigara kullanımına ait dağılımı gösteren pie chart grafiğini elde ettik. Grafiği incelediğimizde; hastalarda sigara kullanmayanların (oranı %69.6), sigara kullananlara (oranı %30.4) göre daha fazla olduğu görülmüştür.
+
+```{r}
+ggplot(train,aes(srs_kat, fill=sex))+
+  geom_bar(position=position_dodge())+
+  ggtitle("Serum Sodyum Seviyesi Kategorilerindeki Cinsiyet Dağılımı")+
+  geom_bar() + 
+  geom_text(aes(label=..count..),stat="count",position=position_stack(0.5))+
+  xlab("Serum Sodyum Seviyesi Kategorileri")+
+  ylab("Sıklıklar")+
+  scale_fill_discrete(name = "Cinsiyet")+
+  theme(axis.title.x = element_text(color="black", face="bold", size=12),
+        axis.title.y = element_text(color="black", face="bold",size=12),
+        plot.title = element_text(hjust = 0.5,color="black", face="bold", size=14),
+        legend.title = element_text(colour="black",face="bold",size=12))
+```
+
+#### ggplot paketindeki fonksiyonları kullanarak; kandaki serum sodyum seviyesi kategorilerinin (srs_kat değişkeninin) cinsiyetlere (sex değişkenine) göre dağılım bilgisini veren bar grafiğini çizdirdik. Grafikleri incelediğimizde hastaların serum sodyum seviyesi normal olanların train veri kümesinde daha çok yer kapladığı anlaşılmıştır. Train veri kümesinde serum sodyum seviyesi düşük olan 62 kişi (41 erkek, 21 kadın), normal olan 176 kişi (111 erkek, 65 kadın) ve yüksek olan 2 kişi (1 erkek, 1 kadın) olduğu görülmüştür.
+
+```{r}
+ggplot(train,aes(ejf_kat, fill=sex))+
+  geom_bar(position=position_dodge())+
+  ggtitle("Ejeksiyon Fraksiyonu Seviyesi Kategorilerindeki Cinsiyet Dağılımı")+
+  geom_bar() + 
+  geom_text(aes(label=..count..),stat="count",position=position_stack(0.5))+
+  xlab("Ejeksiyon Fraksiyonu Seviyesi Kategorileri")+
+  ylab("Sıklıklar")+
+  scale_fill_discrete(name = "Cinsiyet")+
+  theme(axis.title.x = element_text(color="black", face="bold", size=12),
+        axis.title.y = element_text(color="black", face="bold",size=12),
+        plot.title = element_text(hjust = 0.5,color="black", face="bold", size=14),
+        legend.title = element_text(colour="black",face="bold",size=12))
+```
+
+#### ggplot paketindeki fonksiyonları kullanarak; ejeksiyon fraksiyonu seviyesi kategorilerinin (ejf_kat değişkeninin) cinsiyetlere (sex değişkenine) göre dağılım bilgisini veren bar grafiğini çizdirdik. Grafikleri incelediğimizde hastaların ejeksiyon fraksiyonu seviyesi normal olanların train veri kümesinde daha çok yer kapladığı anlaşılmıştır. Train veri kümesinde ejeksiyon fraksiyonu seviyesi düşük olan 77 kişi (53 erkek, 24 kadın), normal olan 134 kişi (86 erkek, 48 kadın) ve yüksek olan 29 kişi (14 erkek, 15 kadın) olduğu görülmüştür.
+
+```{r}
+k<-ceiling((log(2*nrow(train)))+1) 
+genislik_age<-max(train$age)-min(train$age)
+binw_1<-genislik_age/k
+
+ggplot(train,aes(age))+
+  geom_histogram(binwidth=binw_1,
+                 fill="olivedrab4",colour="black", alpha=0.6)+
+  ggtitle("Hasta Yaşlarına Ait Dağılım")
+```
+
+#### ggplot paketindeki fonksiyonları kullanarak, hasta yaşlarının (age değişkeninin) dağılım bilgisini veren histogram grafiğini çizdirdik. Grafiği incelediğimizde çok az sağa çarpıklıktan bahsedebiliriz.
+
+```{r}
+ggplot(train,aes(age,fill=sex))+
+  geom_histogram(binwidth=binw_1)+
+  facet_grid(sex~.)+
+    ggtitle("Cinsiyetlere Göre Hasta Yaşlarına Ait Dağılım")
+```
+
+#### Hasta yaşlarına ait dağılım grafiğimizin, cimsiyetlere göre kırılımını gösteren histogram grafiklerini çizdirdik. Grafikleri imcelediğimizde, kadın ve erkek hastaların dağılım grafiklerinin  hafif sağa çarpık olduğunu ifade edebiliriz.
+
+
+```{r}
+ggqqplot(train$ejection_fraction)
+```
+
+```{r}
+l<-ceiling((log(2*nrow(train)))+1) 
+genislik_ejection_fraction<-max(train$ejection_fraction)-min(train$ejection_fraction)
+binw_2<-genislik_ejection_fraction/l
+
+ggplot(train,aes(ejection_fraction))+
+  geom_histogram(binwidth=binw_2,
+                 fill="steelblue",colour="black", alpha=0.6)+
+    ggtitle("Ejeksiyon Fraksiyon Seviyesine Ait Dağılım")
+```
+
+#### Ejeksiyon fraksiyon seviyesine ait Q-Q plot ve histogram grafiklerini çizdirdik. Ejeksiyon fraksiyon seviyesi Q-Q plot grafiğini incelediğimizde merdiven biçiminde bir grafik olduğu için çarpıklık olduğu kesindir, aykırı ve uç değerler vardır.Uygun dönüşüm yapılıp tekrardan incelenmelidir.
+
+```{r}
+ggplot(train, aes(x = ejf_kat, y = age, fill = DEATH_EVENT)) +
+  geom_boxplot(position = position_dodge(width = 0.9)) +
+  stat_summary(fun = median,geom = 'line',
+               aes(group = DEATH_EVENT, colour = DEATH_EVENT),size=1,
+               position = position_dodge(width = 0.9))
+```
+
+#### Grafiği incelediğimizde; ejeksiyon fraksiyon seviyesi (kalbin her kasılmasında ortaya çıkan kan yüzdesi) düşük olup hayatını kaybetmiş olan hastaların kutu genişliğine bakıldığında, geniş bir yaş dağılımına sahip oldukları görülmektedir. Buna göre ölümlerin yaşın genç olması ya da yaşlı olmasına değilde ejeksiyon fraksiyon seviyesine bağlı olarak ortaya çıkan kalp yetmezliğine bağlı olduğunu söyleyebiliriz.
+
+```{r}
+library(tidyverse)
+```
+
+#### tidyverse paketini çağırdık.
+
+```{r}
+ggplot(train, aes(serum_creatinine, ejection_fraction))+
+  geom_point(size=2,shape=21,stroke=1,color="deepskyblue3", fill="deepskyblue3")+
+  geom_smooth(method = "lm", col="darkblue",se = FALSE)
+
+```
+
+#### İkili değişken dağılımı incelendiğinde yoğunluğun serum kreatinin seviyesinin düşük olduğu aralıkta yoğunlaştığı söylenebilir. Değişen varyanslılıktan söz edilemez.
+
+```{r}
+library(plotly)
+d_plot <- ggplot(train, aes(serum_creatinine, ejection_fraction, fill=DEATH_EVENT, shape=DEATH_EVENT)) +
+  geom_point(position = position_jitter(width= 0.2, height = 0), size = 2)
+
+ggplotly(d_plot)
+```
+
+#### ejeksiyon fraksiyon seviyesine (kalbin her kasılmasında ortaya çıkan kan yüzdesi) bağlı serum kreatinin seviyesi ve ölüm sayısının dağılım grafiği incelendiğinde serum kreatinin seviyesi değeri düşükl aralıkta olan kişilerde mavi renge sahip olan üçgenlerin daha fazla olduğu görülmektedir. Buna göre serum kreatinin seviyesi değeri düşük olan kişilerde ölüm daha fazladır diyebiliriz.
+
+```{r}
+library(ggExtra)
+gr<-ggplot(train,aes(x=serum_creatinine,y=ejection_fraction))+
+  geom_point()+
+  geom_text(size=3,label=rownames(train),nudge_x=0.25,
+            nudge_y=0.25, check_overlap=T)+
+  geom_smooth(method=lm,col="brown1", se=FALSE)
+
+ggMarginal(gr,type="histogram",fill="darksalmon")
+```
+
+#### ejeksiyon fraksiyon seviyesi değişkeninin (kalbin her kasılmasında ortaya çıkan kan yüzdesi) serum kreatinin seviyesi değişkeni ile dağılımı incelendiğinde iki değişken arasında doğrusal bir ilişki olmadığı söylenebilir. İleride yapılacak incelemelerde değişkenlere gereken dönüşümler yapılarak ve aykırı değerler çıkartılarak bu durum giderilebilir.
+
+```{r}
+cor_train<-train[,c(8,7,5)]
+panel.cor <- function(x,y,digits=2,prefix="",cex.cor)       
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr=c(0,1,0,1))
+  r=(cor(x,y))
+  txt <- format(c(r,0.123456789),digits=digits)[1]
+  txt <- paste(prefix, txt, sep="")
+  if(missing(cex.cor)) cex <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex=cex*abs(r))
+}
+panel.hist <- function(x, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 1.5) )
+  h <- hist(x, plot = FALSE)
+  breaks <- h$breaks; nB <- length(breaks)
+  y <- h$counts; y <- y/max(y)
+  rect(breaks[-nB], 0, breaks[-1], y, col="cyan", ...)
+}
+
+pairs(cor_train, lower.panel=panel.smooth, upper.panel=panel.cor)
+
+```
+
+```{r}
+pairs(cor_train, diag.panel=panel.hist, lower.panel=panel.smooth, upper.panel=panel.cor)
+```
+
+```{r}
+pairs(cor_train, diag.panel=panel.hist,lower.panel=function(x,y) panel.smooth(x, y, pch=".", lwd=2), upper.panel=panel.cor)
+```
+
+#### serum kreatinin seviyesi, platelets (kandaki trambositler) ve ejeksiyon fraksiyon seviyesi(kalbin her kasılmasında ortaya çıkan kan yüzdesi) değişkenleri için saçılım grafikleri çizdirildi. Saçılım grafikleri incelendiğinde değişkenler arasında anlamlı bir ilişkinin varlığından söz edilemez. Gerekli dönüşümler yapılarak bu sorun giderilebilir.
+
+```{r}
+library(rcompanion)
+```
+
+#### rcompanion paketini markdown içerisinde aktif hale getirdik.
+
+```{r}
+serum_creatinine_tukey<-transformTukey(train$serum_creatinine,plotit=FALSE)
+```
+
+#### Serum kreatinin değişkeninin lamda değeri -1.15 olarak bulunmuştur. Bu değer sıfırdan küçük olduğu için ters kök değişimi uygulanarak var olan sağa çarpıklığı simetrik hale getirmeye çalışalım.
+
+```{r}
+train$serum_creatinine_terskok <- (train$serum_creatinine)^(-0.5)
+```
+
+```{r}
+hist(train$serum_creatinine, col = "palevioletred3")
+```
+
+```{r}
+hist(train$serum_creatinine_terskok, col = "palevioletred3")
+```
+
+#### serum kreatinin değişkenine ters kök dönüşümü uygulandı ve serum kreatinin ters kök değişkeni olarak kaydedildi. Serum kreatinin değişkeninin ve serum kreatinin ters kök değişkeninin histogram grafiği çizdirildi. Histogram grafikleri incelendiğinde ters kök dönüşümü uygulandıktan sonra, serum kreatinin dağılımının sağa çarpıklıktan kurtulduğu ve daha simetrik bir forma kavuştuğu gözlemlenmiştir.
+
+```{r}
+platelets_tukey<-transformTukey(train$platelets,plotit=FALSE)
+```
+
+#### platelets değişkeninin (kandaki trambositler) lamda değeri 0.45 olarak hesaplanmıştır. Bu değeri en yakın yuvarkayacağımız değer 0.5'tir. Bu yüzden kök dönüşümü uygulayarak hafif sağa çarpıklığı gidermeliyiz.
+
+```{r}
+train$platelets_sqrt<-sqrt(train$platelets)
+```
+
+```{r}
+hist(train$platelets, col = "aquamarine3")
+```
+
+```{r}
+hist(train$platelets_sqrt, col = "aquamarine3")
+```
+
+#### platelets değişkenine kök dönüşümü uygulandı ve platelets_sqrt değişkeni olarak kaydedildi. platelets değişkeninin ve platelets_sqrt değişkeninin histogram grafiği çizdirildi. Histogram grafikleri incelendiğinde kök dönüşümü uygulandıktan sonra, platelets dağılımının hafif sağa çarpıklıktan kurtulduğu ve daha simetrik bir forma kavuştuğu gözlemlenmiştir.
+
+```{r}
+ejection_fraction_tukey<- transformTukey(train$ejection_fraction, plotit=FALSE)
+```
+
+#### Ejeksiyon fraksiyon lamda değeri 0.225 olarak hesaplanmıştır. Bu değeri sıfıra eşit kabul ederek logaritma (log) dönüşümü uygulamalıyız .
+
+```{r}
+train$ejection_fraction_log<-log10(train$ejection_fraction)
+```
+
+```{r}
+hist(train$ejection_fraction, col = "turquoise4")
+```
+
+```{r}
+hist(train$ejection_fraction_log, col = "turquoise4")
+```
+
+#### ejection_fraction değişkenine logaritma (log) dönüşümü uygulandı ve ejection_fraction_log değişkeni olarak kaydedildi. ejection_fraction değişkeninin ve ejection_fraction_log değişkeninin histogram grafiği çizdirildi. Histogram grafikleri incelendiğinde logaritma (log) dönüşümü uygulandıktan sonra, ejection_fraction dağılımının hafif sağa çarpıklıktan kurtulduğu ve daha simetrik bir forma kavuştuğu gözlemlenmiştir.
+
+```{r}
+gr<-ggplot(train,aes(x=serum_creatinine_terskok,y=ejection_fraction_log))+
+  geom_point()+
+  geom_text(size=3,label=rownames(train),nudge_x=0.25,
+            nudge_y=0.25, check_overlap=T)+
+  geom_smooth(method=lm,col="brown1", se=FALSE)
+
+ggMarginal(gr,type="histogram",fill="darksalmon")
+
+```
+
+#### serum kreatinin ve ejeksiyon fraksiyon değişkenlerine dönüşüm uygulandıktan sonra saçılım grafiklerini yeniden çizdirdik. Grafiği incelediğimizde dönüşüm işlemine rağmen serum kreatinin ile ejeksiyon fraksiyon arasında hala doğrusal bir ilişki olmadığı söylenebilir. Çok fazla uç değer bulunmaktadır.
+
+```{r}
+cor_train<-train[,c(17,18,19)]
+panel.cor <- function(x,y,digits=2,prefix="",cex.cor)       
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr=c(0,1,0,1))
+  r=(cor(x,y))
+  txt <- format(c(r,0.123456789),digits=digits)[1]
+  txt <- paste(prefix, txt, sep="")
+  if(missing(cex.cor)) cex <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex=cex*abs(r))
+}
+panel.hist <- function(x, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 1.5) )
+  h <- hist(x, plot = FALSE)
+  breaks <- h$breaks; nB <- length(breaks)
+  y <- h$counts; y <- y/max(y)
+  rect(breaks[-nB], 0, breaks[-1], y, col="cyan", ...)
+}
+
+pairs(cor_train, lower.panel=panel.smooth, upper.panel=panel.cor)
+```
+
+```{r}
+pairs(cor_train, diag.panel=panel.hist, lower.panel=panel.smooth, upper.panel=panel.cor)
+```
+
+```{r}
+pairs(cor_train, diag.panel=panel.hist,lower.panel=function(x,y) panel.smooth(x, y, pch=".", lwd=2), upper.panel=panel.cor)
+```
+
+#### Gerekli dönüşümler yapıldıktan sonra saçılım grafiklerini karşılaştırdığımızda dönüşüm yapılmamış saçılım grafiği ilişki değerleri dönüşüm yapılan grafiğe göre daha düşüktür. Dönüşüm yapılan saçılım grafiği ilişi katsayıları yüksektir fakat değişkenler araasında doğrusal bir ilişki olduğu söylenemez. Modelleme adımında değişkenlere gerekli dönüşümler uygulanıp tekrardan denenebilir.
+
+```{r}
+table3 <- xtabs(~sex+ejf_kat+smoking, data = train)
+ftable(table3)
+```
+
+#### Cinsiyetlerin ejeksiyon fraksiyon (kalbin her kasılmasında ortaya çıkan kan yüzdesi) kategorilerinde sigara kullanımını gösteren tabloyu oluşturduk.
+
+```{r}
+library(ggplot2)
+library(ggmosaic)
+```
+
+#### ggplot2 ve ggmosaic paketlerini markdown içerisinde aktif hale getirdik.
+
+```{r}
+ggplot(train) +
+  geom_mosaic(aes(x = product(sex, smoking), fill=sex), na.rm=TRUE) +  labs(x = "Sigara Kullanımı ", title='Kalp Kasılmasında Ortaya Çıkan Kan Yüzdesi Kategorisi, Cinsiyet  ve Sigara ') + 
+  facet_grid(ejf_kat~.)
+
+```
+
+#### Tabloyu incelediğimizde ejeksiyon fraksiyon kategorisi yüksek olan erkeklerin sigara kullanma frekansı da yüksektir. Kadnlarda bu durum erkeklere göre daha düşüktür. 
+
+```{r}
+library(aplpack)
+library(dplyr)
+```
+
+#### aplpack ve dplyr paketlerini markdown içerisinde aktif hale getirdik.
+
+```{r}
+new_data<-train%>%
+  group_by(ejf_kat) %>%
+  dplyr::summarize(mean_ejf = mean(ejection_fraction),mean_plt = mean(platelets),mean_yas = mean(age))
+faces(new_data[,-1],  labels=as.character(new_data$ejf_kat))
+
+```
+
+#### train veri kümesindeki ejeksiyon fraksiyonu değişkeni için ejf_kat, platelets ve age değişkenlerinden yararlanarak Chernoff yüzleri oluşturuldu.
+
+#### Chernoff yüzlerini incelediğimizde ejeksiyon fraksiyon seviyesinin düşük kategorisinde ağız, göz, burun ve kulağın şekil açısından diğerlerine kıyasla daha dar ve küçük bir yapıya sahip olduğu görülüyor.Yani değişken değerlerinin daha düşük olduğunu söyleyebiliriz. Ejeksiyon fraksiyon seviyesinin normal kategorisine ait chernoff yüzünü incelersek; ağız kısmında smiling yoktur. Yani yaş ortalamasının en düşük olduğu kategori olduğunu söyleyebiliriz. Yüzdeki organların normal düzeylerde şekillendiği söylenebilir. Yani değişken değerleri normal düzeyde dağılmaktadır. Ejeksiyon fraksiyon seviyesinin yüksek kategorisinde ki chernoff yüzünün daha güleç ve yüzdeki organların daha büyük düzeylerde şekillendiği söylenebilir. Yani değişken değerlerinin daha büyük olduğunu söyleyebiliriz. Saçlar ise yukarıya doğru bakıyor. Bu durum bize yaş ortalaması en büyük olan kategorinin yüksek kategorisi olduğunu söylemektedir.
+
+### 5. Modelleme
+
+```{r}
+test <- read_excel("test.xlsx")
+test$anaemia <- as.factor(test$anaemia)
+test$diabetes <- as.factor(test$diabetes)
+test$high_blood_pressure <- as.factor(test$high_blood_pressure)
+test$sex <- as.factor(test$sex)
+test$smoking <- as.factor(test$smoking)
+test$DEATH_EVENT <- as.factor(test$DEATH_EVENT)
+```
+
+#### Test veri kümemizi markdowna aktardık. Sonrasında veri kümemizde yer alan kategorik değişkenleri as.factor fonksiyonu yardımı ile factor formatına çevirdik.
+
+```{r}
+summary(test)
+```
+
+#### Test veri kümemizin yapısını inceledik ve yapmış olduğumuz dönüşümleri kontrol ettik.
+
+```{r}
+test$serum_creatinine_terskok <- (test$serum_creatinine)^(-0.5)
+test$platelets_sqrt<-sqrt(test$platelets)
+test$ejection_fraction_log<-log10(test$ejection_fraction)
+```
+
+#### Train veri kümemizde uygulamış olduğumuz ters kök, kök ve logaritma dönüşümlerini, test veri kümemizde de gerçekleştirdik.
+
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+#### rpart ve rpart.plot paketlerini markdowm içerisinde aktif hale getirdik.
+
+```{r}
+cart<-rpart(ejection_fraction~ejection_fraction_log+serum_creatinine_terskok+sex+smoking , data=train)
+cart$variable.importance
+```
+
+#### Değişkenlerimizin önem dereceleri incelediğimizde,  en yüksek değerin logaritmik dönüşüm uyguladığımız ejeksiyon fraksiyon değişkeninin olduğu görülmektedir.
+
+```{r}
+rpart.plot(cart)
+```
+
+#### Karar ağacımız, ejeksiyon fraksiyon değişkenine göre oluşturuldu. Sonuç olarak en yüksek oran %25 bulundu.
+
+```{r}
+defaultSummary(data.frame(obs=train$ejection_fraction_log,pred=predict(cart,train)))
+```
+
+```{r}
+defaultSummary(data.frame(obs=test$ejection_fraction_log,pred=predict(cart,test)))
+```
+
+#### Train ve test veri kümeleri için predict cart tahminlemesi gerçekleştirildi.
+
+```{r}
+train$Target<-ifelse(train$creatinine_phosphokinase<= 120,"HDegil","Hasta")
+train$Target<-as.factor(train$Target)
+```
+
+```{r}
+test$Target<-ifelse(test$creatinine_phosphokinase<=120,"HDegil","Hasta")
+test$Target<-as.factor(test$Target)
+```
+
+#### Train ve test veri kümemizdeki, creatinine_phosphokinase nicel değişkeni sınıflandırma problemine dönüştürülmek için kategorik forma çevrildi. Sonrasında as.factor fonksiyonu yardımıyla factor olarak tanımlatıldı.
+
+```{r}
+clsf_rpart<-rpart(Target~ platelets_sqrt+sex+smoking, data=train, method="class")
+rpart.plot(clsf_rpart)
+```
+
+#### Target, platelets_sqrt, sex ve smoking değişkenleri kullanılarak modelleme gerçekleştirildi ve karar ağacı çizdirildi. Karar ağacı incelendiğinde dallanmanın platelets değişkenine (kandaki trambosit oranı) göre oluştuğu görülüyor. Dallandırma sonuçlarına göre hasta olma oranının %92, hasta olmama oranının ise %8 olduğu görülmektedir.
+
+```{r}
+library(caret)
+library(iterators)
+```
+
+#### caret ve iterators paketlerini markdowm içerisinde aktif hale getirdik.
+
+```{r}
+tb<-table(predict(clsf_rpart, train, type="class"),train$Target)
+tb
+```
+
+#### Oluşturulan tabloyu incelediğimizde, train veri kümesinde 220 kişinin hasta olduğu, 20 kişinin de hasta olmadığı anlaşılmıştır. Ancak modelimiz, train veri kümesinde gerçekte hasta olan 50 kişiyi hasta değil, hasta olmayan 5 kişiyi de hasta olarak sınıflandırmıştır.
+
+```{r}
+confusionMatrix(tb,positive="Hasta")
+```
+
+#### Train veri kümemizin doğruluk değeri %77'dir. Modelimiz gerçekte hasta olan kişilerin %97'sine doğru karar vermiştir. Fakat gerçekte hasta olmayan kişilerin %23'lük kısmına da hasta demiştir.
+
+```{r}
+tb2<-table(predict(clsf_rpart, test, type="class"),test$Target)
+tb2
+```
+
+#### Oluşturulan tabloyu incelediğimizde, test veri kümesinde 55 kişinin hasta olduğu, 4 kişinin de hasta olmadığı anlaşılmıştır. Ancak modelimiz, test veri kümesinde gerçekte hasta olan 11 kişiyi hasta değil, hasta olmayan 3 kişiyi de hasta olarak sınıflandırmıştır.
+
+```{r}
+confusionMatrix(tb2,positive="Hasta")
+```
+
+#### Test veri kümemizin doğruluk değeri %76'dır. Modelimiz gerçekte hasta olan kişilerin %93'üne doğru karar vermiştir. Fakat gerçekte hasta olmayan kişilerin %8'lik kısmına da hasta demiştir.
+
+### SONUÇ:
+
+#### Kardiyovasküler hastalıklar (KVH)'ın farklı değişkenlerini (nitel ve nicel) içeren veri seti ile analizler gerçekleştirdik. İlk olarak veri setinde NA gözlem araştırması yaptık. Yapılan araştırmada veri setinin NA gözlem içermediği bilgisine ulaştık. Sonraki adımda veri seti için rastgele NA gözlem yaratıp tahmine dayalı doldurduk. Ardından serum sodyum ve ejeksiyon fraksiyon değişkenlerini kategorilerine ayırdık. İşlemlerimize değişkenlerin grafiklerini, çeyreklilk, DAG vb değerlerini inceleyerek devam ettik. Bu işlemlerin ardından veri setinde normal dağılmayan değişkenler için uygun dönüşüm işlemlerini gerçekleştirdik. Sonrasında ileri grafiklere başvurarak veri setimiz hakkkında daha da detaylı bilgilere ulaştık. Bir sonraki adımda veri setimiz için bir model oluşturduk ve tahminler gerçekleştirdik. Son olarak ise modelimizle elde etmiş olduğumuz tahminlerin train ve test veri kümeleri için hata matrislerini oluşturduk.
